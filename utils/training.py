@@ -84,13 +84,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     :param dataset: the continual dataset at hand
     :param args: the arguments of the current execution
     """
-    print(args)
+    
 
-    if not args.nowand:
-        assert wandb is not None, "Wandb not installed, please install it or run without wandb"
-        wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=vars(args))
-        args.wandb_url = wandb.run.get_url()
-
+    
+    model.scaler = torch.cuda.amp.GradScaler()
     model.net.to(model.device)
     results, results_mask_classes = [], []
 

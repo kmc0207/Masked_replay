@@ -6,6 +6,7 @@
 import torch
 
 from models.utils.continual_model import ContinualModel
+from utils.mr import masking
 from utils.args import add_management_args, add_experiment_args, add_rehearsal_args, ArgumentParser
 from utils.buffer import Buffer
 
@@ -30,20 +31,47 @@ class Er(ContinualModel):
     def observe(self, inputs, labels, not_aug_inputs):
 
         real_batch_size = inputs.shape[0]
+        if self.args.concat == True:
+            self.opt.zero_grad()
+            if not self.buffer.is_empty():
+                buf_inputs, buf_labels = self.buffer.get_data(
+                    self.args.minibatch_size, transform=self.transform)
+                inputs = torch.cat((inputs, buf_inputs))
+                labels = torch.cat((labels, buf_labels))
 
-        self.opt.zero_grad()
-        if not self.buffer.is_empty():
-            buf_inputs, buf_labels = self.buffer.get_data(
-                self.args.minibatch_size, transform=self.transform)
-            inputs = torch.cat((inputs, buf_inputs))
-            labels = torch.cat((labels, buf_labels))
+            outputs = self.net(inputs)
+            loss = self.loss(outputs, labels)
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.opt)
+            self.scaler.update()
 
-        outputs = self.net(inputs)
-        loss = self.loss(outputs, labels)
-        loss.backward()
-        self.opt.step()
+            self.buffer.add_data(examples=not_aug_inputs,
+                                 labels=labels[:real_batch_size])
+        else : 
+            self.opt.zero_grad()
+            if self.args.current_b == True:
+                outputs =self.net.forward_adv(inputs)
+            else:
+                outputs = self.net(inputs)
+            if self.args.masking_c ==True:
+                outputs = masking(outputs,labels,self.device)
+            loss = self.loss(outputs,labels)
+            if not self.buffer.is_empty():
+                buf_inputs, buf_labels = self.buffer.get_data(
+                    self.args.minibatch_size, transform=self.transform)
+                if self.args.memory_b == True:
+                    b_outputs = self.net.forward_adv(buf_inputs)
+                else:
+                    b_outputs =self.net(buf_inputs)
+                if self.args.masking_m == True:
+                    b_outputs = masking(b_outputs,buf_labels,self.device)
+                loss += self.loss(b_outputs,buf_labels)
 
-        self.buffer.add_data(examples=not_aug_inputs,
-                             labels=labels[:real_batch_size])
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.opt)
+            self.scaler.update()
+
+            self.buffer.add_data(examples=not_aug_inputs,
+                                 labels=labels[:real_batch_size])            
 
         return loss.item()
