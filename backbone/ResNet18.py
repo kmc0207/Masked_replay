@@ -1,16 +1,13 @@
-# Copyright 2022-present, Lorenzo Bonicelli, Pietro Buzzega, Matteo Boschini, Angelo Porrello, Simone Calderara.
+# Copyright 2020-present, Pietro Buzzega, Matteo Boschini, Angelo Porrello, Davide Abati, Simone Calderara.
 # All rights reserved.
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import List
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.functional import avg_pool2d, relu
-
-from backbone import MammothBackbone
+from torch.nn.functional import relu, avg_pool2d
+from typing import List
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int=1) -> F.conv2d:
@@ -42,13 +39,56 @@ class BasicBlock(nn.Module):
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes)
-
+        self.conv3 = nn.Conv2d(in_planes,self.expansion * planes, kernel_size=1,stride=stride, bias= False)
+        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+        self.bn1_ = nn.BatchNorm2d(planes)
+        self.bn2_ = nn.BatchNorm2d(planes)
+        self.bn3_ = nn.BatchNorm2d(planes)
+        self.bn1_1 = nn.BatchNorm2d(planes)
+        self.bn2_1 = nn.BatchNorm2d(planes)
+        self.bn3_1 = nn.BatchNorm2d(planes)
+        self.bn1_2 = nn.BatchNorm2d(planes)
+        self.bn2_2 = nn.BatchNorm2d(planes)
+        self.bn3_2 = nn.BatchNorm2d(planes)
+        self.bn1_3 = nn.BatchNorm2d(planes)
+        self.bn2_3 = nn.BatchNorm2d(planes)
+        self.bn3_3 = nn.BatchNorm2d(planes)
+        self.bn1_4 = nn.BatchNorm2d(planes)
+        self.bn2_4 = nn.BatchNorm2d(planes)
+        self.bn3_4 = nn.BatchNorm2d(planes)
+        
+        
         self.shortcut = nn.Sequential()
+        self.adv_shortcut= nn.Sequential()
+        self.adv_shortcut_= nn.Sequential()
+        self.adv_shortcut_1= nn.Sequential()
+        self.adv_shortcut_2= nn.Sequential()
+        self.adv_shortcut_3= nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1,
-                          stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion * planes)
+                self.conv3,
+                self.bn3
+            )
+            self.adv_shortcut = nn.Sequential(
+                self.conv3,
+                self.bn3_
+            )
+            self.adv_shortcut_ = nn.Sequential(
+                self.conv3,
+                self.bn3_1
+            )
+            self.adv_shortcut_1 = nn.Sequential(
+                self.conv3,
+                self.bn3_2
+            )
+            self.adv_shortcut_2 = nn.Sequential(
+                self.conv3,
+                self.bn3_3
+            )
+            
+            self.adv_shortcut_3 = nn.Sequential(
+                self.conv3,
+                self.bn3_4
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -62,9 +102,44 @@ class BasicBlock(nn.Module):
         out += self.shortcut(x)
         out = relu(out)
         return out
+    
+    def forward_adv(self,x):
+        out = relu(self.bn1_(self.conv1(x)))
+        out = self.bn2_(self.conv2(out))
+        out += self.adv_shortcut(x)
+        out = relu(out)
+        return out
+    
+    
+    def forward_adv_(self,x):
+        out = relu(self.bn1_1(self.conv1(x)))
+        out = self.bn2_1(self.conv2(out))
+        out += self.adv_shortcut_(x)
+        out = relu(out)
+        return out
+    
+    
+    def forward_adv_1(self,x):
+        out = relu(self.bn1_2(self.conv1(x)))
+        out = self.bn2_2(self.conv2(out))
+        out += self.adv_shortcut_1(x)
+        out = relu(out)
+        return out
+    def forward_adv_2(self,x):
+        out = relu(self.bn1_3(self.conv1(x)))
+        out = self.bn2_3(self.conv2(out))
+        out += self.adv_shortcut_2(x)
+        out = relu(out)
+        return out
+    def forward_adv_3(self,x):
+        out = relu(self.bn1_4(self.conv1(x)))
+        out = self.bn2_4(self.conv2(out))
+        out += self.adv_shortcut_3(x)
+        out = relu(out)
+        return out
 
 
-class ResNet(MammothBackbone):
+class ResNet(nn.Module):
     """
     ResNet network architecture. Designed for complex datasets.
     """
@@ -85,6 +160,11 @@ class ResNet(MammothBackbone):
         self.nf = nf
         self.conv1 = conv3x3(3, nf * 1)
         self.bn1 = nn.BatchNorm2d(nf * 1)
+        self.bn1_ = nn.BatchNorm2d(nf*1)
+        self.bn1_1 = nn.BatchNorm2d(nf*1)
+        self.bn1_2 = nn.BatchNorm2d(nf*1)
+        self.bn1_3 = nn.BatchNorm2d(nf*1)
+        self.bn1_4 = nn.BatchNorm2d(nf*1)
         self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
@@ -118,35 +198,143 @@ class ResNet(MammothBackbone):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
-    def forward(self, x: torch.Tensor, returnt='out') -> torch.Tensor:
+    def forward(self, x: torch.Tensor,returnt=False) -> torch.Tensor:
         """
         Compute a forward pass.
         :param x: input tensor (batch_size, *input_shape)
-        :param returnt: return type (a string among 'out', 'features', 'all')
         :return: output tensor (output_classes)
         """
-
-        out = relu(self.bn1(self.conv1(x))) # 64, 32, 32
-        if hasattr(self, 'maxpool'):
-            out = self.maxpool(out)
-        out = self.layer1(out)  # -> 64, 32, 32
-        out = self.layer2(out)  # -> 128, 16, 16
-        out = self.layer3(out)  # -> 256, 8, 8
-        out = self.layer4(out)  # -> 512, 4, 4
-        out = avg_pool2d(out, out.shape[2]) # -> 512, 1, 1
-        feature = out.view(out.size(0), -1)  # 512
-
+        out = relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)  # 64, 32, 32
+        out = self.layer2(out)  # 128, 16, 16
+        out = self.layer3(out)  # 256, 8, 8
+        out = self.layer4(out)  # 512, 4, 4
+        out = avg_pool2d(out, out.shape[2]) # 512, 1, 1
+        out = out.view(out.size(0), -1)  # 512
         if returnt == 'features':
-            return feature
-
-        out = self.classifier(feature)
-
-        if returnt == 'out':
             return out
-        elif returnt == 'all':
-            return (out, feature)
+        out = self.linear(out)
+        return out
+    
+    def forward_adv(self,x):
+        out = relu(self.bn1_(self.conv1(x)))
+        for layer in self.layer1:
+            out = layer.forward_adv(out)
+        for layer in self.layer2:
+            out = layer.forward_adv(out)
+        for layer in self.layer3:
+            out = layer.forward_adv(out)
+        for layer in self.layer4:
+            out = layer.forward_adv(out)
+        out = avg_pool2d(out,out.shape[2])
+        out = out.view(out.size(0),-1)
+        out = self.linear(out)
+        return out
+    
+    
+    def forward_adv_(self,x):
+        out = relu(self.bn1_1(self.conv1(x)))
+        for layer in self.layer1:
+            out = layer.forward_adv_(out)
+        for layer in self.layer2:
+            out = layer.forward_adv_(out)
+        for layer in self.layer3:
+            out = layer.forward_adv_(out)
+        for layer in self.layer4:
+            out = layer.forward_adv_(out)
+        out = avg_pool2d(out,out.shape[2])
+        out = out.view(out.size(0),-1)
+        out = self.linear(out)
+        return out
+    
+    def forward_adv_1(self,x):
+        out = relu(self.bn1_2(self.conv1(x)))
+        for layer in self.layer1:
+            out = layer.forward_adv_2(out)
+        for layer in self.layer2:
+            out = layer.forward_adv_2(out)
+        for layer in self.layer3:
+            out = layer.forward_adv_2(out)
+        for layer in self.layer4:
+            out = layer.forward_adv_2(out)
+        out = avg_pool2d(out,out.shape[2])
+        out = out.view(out.size(0),-1)
+        out = self.linear(out)
+        return out
+    def forward_adv_2(self,x):
+        out = relu(self.bn1_3(self.conv1(x)))
+        for layer in self.layer1:
+            out = layer.forward_adv_3(out)
+        for layer in self.layer2:
+            out = layer.forward_adv_3(out)
+        for layer in self.layer3:
+            out = layer.forward_adv_3(out)
+        for layer in self.layer4:
+            out = layer.forward_adv_3(out)
+        out = avg_pool2d(out,out.shape[2])
+        out = out.view(out.size(0),-1)
+        out = self.linear(out)
+        return out
+    def forward_adv_3(self,x):
+        out = relu(self.bn1_4(self.conv1(x)))
+        for layer in self.layer1:
+            out = layer.forward_adv_4(out)
+        for layer in self.layer2:
+            out = layer.forward_adv_4(out)
+        for layer in self.layer3:
+            out = layer.forward_adv_4(out)
+        for layer in self.layer4:
+            out = layer.forward_adv_4(out)
+        out = avg_pool2d(out,out.shape[2])
+        out = out.view(out.size(0),-1)
+        out = self.linear(out)
+        return out
+    
+    
 
-        raise NotImplementedError("Unknown return type")
+    def features(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the non-activated output of the second-last layer.
+        :param x: input tensor (batch_size, *input_shape)
+        :return: output tensor (??)
+        """
+        out = self._features(x)
+        out = avg_pool2d(out, out.shape[2])
+        feat = out.view(out.size(0), -1)
+        return feat
+
+    def get_params(self) -> torch.Tensor:
+        """
+        Returns all the parameters concatenated in a single tensor.
+        :return: parameters tensor (??)
+        """
+        params = []
+        for pp in list(self.parameters()):
+            params.append(pp.view(-1))
+        return torch.cat(params)
+
+    def set_params(self, new_params: torch.Tensor) -> None:
+        """
+        Sets the parameters to a given value.
+        :param new_params: concatenated values to be set (??)
+        """
+        assert new_params.size() == self.get_params().size()
+        progress = 0
+        for pp in list(self.parameters()):
+            cand_params = new_params[progress: progress +
+                torch.tensor(pp.size()).prod()].view(pp.size())
+            progress += torch.tensor(pp.size()).prod()
+            pp.data = cand_params
+
+    def get_grads(self) -> torch.Tensor:
+        """
+        Returns all the gradients concatenated in a single tensor.
+        :return: gradients tensor (??)
+        """
+        grads = []
+        for pp in list(self.parameters()):
+            grads.append(pp.grad.view(-1))
+        return torch.cat(grads)
 
 
 def resnet18(nclasses: int, nf: int=64) -> ResNet:
